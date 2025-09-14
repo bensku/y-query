@@ -1,0 +1,15 @@
+{
+  "name": "@bensku/y-query",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "yjs": "^13.6.27"
+  }
+}
