@@ -20,10 +20,9 @@ export class View {
         // In case it doesn't, we'll need to scan through multiple partitions
         for (const partition of partitions) {
             // TODO consider if caching maps would benefit performance
-            const map = partition.doc.getMap(table.name);
-            const value = map.get(key);
-            if (value !== undefined && value !== null) {
-                return readData(value, key, table.type);
+            const value = readData(partition.doc, table, key);
+            if (value) {
+                return value;
             }
         }
 

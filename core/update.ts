@@ -1,26 +1,25 @@
-import type { DataSource } from "./storage";
+import type { DataSource, Partition } from "./storage";
 import type { Table } from "./table";
-import { writeData } from "./yjs-types";
+import { writeData, type DeepPartial } from "./yjs-types";
 
-export function insert<T>(storage: DataSource, table: Table<T>, entry: Omit<NonNullable<T>, 'key'>, prefix?: string): string {
-    // TODO do we want same partition API for both read and write paths?
-    const partitions = storage.partitions(prefix);
-    const key = prefix ? `${prefix}${crypto.randomUUID()}` : crypto.randomUUID();
-    
-    const tableMap = partitions[0]!.doc.getMap(table.name);
-    writeData(tableMap, key, entry, table.type);
-    return key;
+export function upsert<T>(storage: DataSource, table: Table<T>, row: T & { key: string }) {
+    const partition = pickPartition(storage.partitions(row.key), table, row.key);
+    writeData(partition.doc, table, row.key, table.type.parse(row), true);
 }
 
-export function update<T>(storage: DataSource, table: Table<T>, changes: NonNullable<Partial<T>> & { key: string }): void {
-    const partitions = storage.partitions(changes.key);
-    const tableMap = partitions[0]!.doc.getMap(table.name);
-    writeData(tableMap, changes.key, changes, table.type);
-
+export function update<T>(storage: DataSource, table: Table<T>, update: DeepPartial<T> & { key: string }): void {
+    const partition = pickPartition(storage.partitions(update.key), table, update.key);
+    // Write without upserting; data will be synced, but won't be visible until someone upserts
+    writeData(partition.doc, table, update.key, update, false);
 }
 
 export function remove(storage: DataSource, table: Table<unknown>, key: string) {
-    const partitions = storage.partitions(key);
-    const tableMap = partitions[0]!.doc.getMap(table.name);
-    tableMap.delete(key);
+    const partition = pickPartition(storage.partitions(key), table, key);
+    // Delete from index only for now
+    const rows = partition.doc.getMap(table.name);
+    rows.delete(key);
+}
+
+function pickPartition(partitions: Partition[], table: Table<unknown>, key: string) {
+    return partitions[0]!;
 }
