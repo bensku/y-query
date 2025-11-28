@@ -8,7 +8,11 @@ export function readData<T>(doc: Y.Doc, table: Table<T>, key: string): T | null 
     return present ? readObject(doc, `${table.name}.${key}`, table.type) : null;
 }
 
-function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject): T {
+export function readDataPresent<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
+    return readObject(doc, `${table.name}.${key}`, table.type);
+}
+
+function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject): T | null {
     const row = doc.getMap(key);
     const data: Record<string, unknown> = {};
     for (const [field, t] of Object.entries(type.shape)) {
@@ -22,6 +26,10 @@ function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject
                 // But we need to convert it to plain JS object
                 // Since it, too, might have nested Yjs objects, we need to do this recursively
                 value = readObject(doc, `${key}.${field}`, type);
+                if (value == null) {
+                    // Inner object not yet fully replicated
+                    return null; // Entire row must match schema for us to return it
+                }
             } else {
                 // And we should present it as Yjs type
                 value = doc.get(`${key}.${field}`, syncAs as any); // TODO type checks
@@ -35,7 +43,11 @@ function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject
     if ('key' in type.shape) {
         data.key = key;
     }
-    return type.parse(data);
+
+    // Assume errors are just data that hasn't been fully replicated here
+    // and do not return them
+    const parsed = type.safeParse(data);
+    return parsed.success ? parsed.data : null;
 }
 
 export type DeepPartial<T> = T extends object ? {
@@ -77,4 +89,31 @@ function writeObject(doc: Y.Doc, key: string, data: Record<string, unknown>, typ
             row.set(field, value);
         }
     }
+}
+
+export function getRow(doc: Y.Doc, table: Table<unknown>, key: string): Y.Map<unknown> {
+    return doc.getMap(`${table.name}.${key}`);
+}
+
+export function allKeys(doc: Y.Doc, table: Table<unknown>): IterableIterator<string> {
+    return doc.getMap(table.name).keys();
+}
+
+export function observeKeys(doc: Y.Doc, table: Table<unknown>, callback: (added: string[], removed: string[]) => void) {
+    const handler = (event: Y.YMapEvent<unknown>) => {
+        const added: string[] = [];
+        const removed: string[] = [];
+        event.changes.keys.forEach((change, key) => {
+            if (change.action == 'add') {
+                added.push(key);
+            } else if (change.action == 'delete') {
+                removed.push(key);
+            }
+        })
+        if (added.length != 0 || removed.length != 0) {
+            callback(added, removed);
+        }
+    };
+    doc.getMap(table.name).observe(handler);
+    return () => doc.getMap(table.name).unobserve(handler);
 }
