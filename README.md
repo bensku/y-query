@@ -9,8 +9,9 @@ y-query provides:
 * Watcher system for observing changes real-time
 
 ## Limitations
-> **-query is alpha-quality software!** In addition to below limitations, it
+> **y-query is alpha-quality software!** In addition to below limitations, it
 > is probably buggy. Some of those bugs might decide to eat your data!
+
 Before we proceed, you should understand y-query's fundamental limitations.
 These are not *bugs*, and as such, it is unlikely they'll ever be "fixed".
 
