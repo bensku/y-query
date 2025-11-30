@@ -6,7 +6,7 @@ export interface Table<T> {
     type: z.ZodType<T> & z.ZodObject;
 }
 
-export function table(name: string, type: z.ZodType) {
+export function table<T>(name: string, type: z.ZodType<T> & z.ZodObject): Table<T> {
     return {
         name,
         type

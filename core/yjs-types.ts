@@ -5,14 +5,14 @@ import type { Table } from './table';
 export function readData<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
     const rows = doc.getMap(table.name);
     const present = rows.has(key);
-    return present ? readObject(doc, `${table.name}.${key}`, table.type) : null;
+    return present ? readObject(doc, `${table.name}.${key}`, table.type, key) : null;
 }
 
 export function readDataPresent<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
-    return readObject(doc, `${table.name}.${key}`, table.type);
+    return readObject(doc, `${table.name}.${key}`, table.type, key);
 }
 
-function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject): T | null {
+function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject, userKey?: string): T | null {
     const row = doc.getMap(key);
     const data: Record<string, unknown> = {};
     for (const [field, t] of Object.entries(type.shape)) {
@@ -25,7 +25,7 @@ function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject
             if (syncAs == Y.Map && t.type == 'object') {
                 // But we need to convert it to plain JS object
                 // Since it, too, might have nested Yjs objects, we need to do this recursively
-                value = readObject(doc, `${key}.${field}`, type);
+                value = readObject(doc, `${key}.${field}`, t);
                 if (value == null) {
                     // Inner object not yet fully replicated
                     return null; // Entire row must match schema for us to return it
@@ -40,8 +40,8 @@ function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject
         }
         data[field] = value;
     }
-    if ('key' in type.shape) {
-        data.key = key;
+    if (userKey && 'key' in type.shape) {
+        data.key = userKey;
     }
 
     // Assume errors are just data that hasn't been fully replicated here
