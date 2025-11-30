@@ -1,8 +1,16 @@
-import z from 'zod';
 import * as Y from 'yjs';
-import { table } from '../core/table';
-import { remove, update, upsert } from '../core/update';
-import { any, eq, getKey, select, watch } from '../core/view';
+import z from 'zod';
+import {
+    any,
+    eq,
+    getKey,
+    remove,
+    select,
+    table,
+    update,
+    upsert,
+    watch,
+} from '../index';
 
 // Configure a table
 const MyTable = table(

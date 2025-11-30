@@ -9,6 +9,8 @@ y-query provides:
 * Watcher system for observing changes real-time
 
 ## Limitations
+> **-query is alpha-quality software!** In addition to below limitations, it
+> is probably buggy. Some of those bugs might decide to eat your data!
 Before we proceed, you should understand y-query's fundamental limitations.
 These are not *bugs*, and as such, it is unlikely they'll ever be "fixed".
 
@@ -36,13 +38,10 @@ Finally, Yjs has zero support for limiting read access within a single
 `Y.Doc`. Sharding over multiple documents can help, but it is another thing
 you would need to implement yourself.
 
-**Aside these limitations, y-query is alpha-quality software!** There will be
-terrible bugs, some of which might eat your data.
-
 ## Quick start
 Install y-query with your favorite package manager. For example:
 ```sh
-npm install TODO
+npm install @bensku/y-query
 ```
 
 Create your first table:
