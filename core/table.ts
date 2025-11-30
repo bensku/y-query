@@ -6,6 +6,8 @@ export interface Table<T> {
     type: z.ZodType<T> & z.ZodObject;
 }
 
+export type Row<T extends Table<unknown>> = z.output<T['type']>;
+
 export function table<T>(name: string, type: z.ZodType<T> & z.ZodObject): Table<T> {
     return {
         name,

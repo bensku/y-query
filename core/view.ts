@@ -22,25 +22,33 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
     return results;
 }
 
-export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, watcher: (added: T[], removed: T[], changed: T[]) => void,
-        level: 'keys' | 'content' | 'deep'): () => void {
+export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: 'keys' | 'content' | 'deep',
+        watcher: (added: T[], removed: T[], changed: T[]) => void): () => void {
     const visibleData: Map<string, T> = new Map();
     
     const rowUnobservers: Map<string, (() => void)> = new Map();
-    const observeRow = (row: Y.Map<unknown>, key: string, deep: boolean, changeAsAddition: boolean) => {
+    const observeRow = (row: Y.Map<unknown>, key: string, deep: boolean) => {
         const rowWatcher = () => {
+            if (!query(row)) {
+                // Row was changed in a way that it no longer falls within our query!
+                const unobserver = rowUnobservers.get(key);
+                if (unobserver) {
+                    unobserver();
+                }
+
+                // If data was visible, notify watcher that it was removed
+                const data = visibleData.get(key);
+                if (data) {
+                    visibleData.delete(key);
+                    watcher([],  [data], []);
+                }
+                return;
+            }
+
             const data = readDataPresent(doc, table, key);
             if (data) {
                 // Content changed! Notify watcher
-                row.unobserveDeep(rowWatcher);
-                if (changeAsAddition) {
-                    // We were waiting for initial sync to finish, so track this as addition
-                    watcher([data], [], []);
-                    visibleData.set(key, data);
-                } else {
-                    // Just normal change
-                    watcher([], [], [data]);
-                }
+                watcher([], [], [data]);
             } // else: incompletely synced changes violate schema; wait for sync to complete
         };
         if (deep) {
@@ -48,7 +56,13 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, watcher:
         } else {
             row.observe(rowWatcher);
         }
-        rowUnobservers.set(key, rowWatcher);
+        rowUnobservers.set(key, () => {
+            if (deep) {
+                row.unobserveDeep(rowWatcher);
+            } else {
+                row.unobserve(rowWatcher);
+            }
+        });
     }
 
     const watchContent = level == 'content' || level == 'deep';
@@ -71,7 +85,7 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, watcher:
 
                 // If requested, watch for changes in the row content
                 if (watchContent) {
-                    observeRow(row, key, watchDeep, false);
+                    observeRow(row, key, watchDeep);
                 }
             } else {
                 // Row is incompletely replicated and currently violates schema
@@ -104,16 +118,26 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, watcher:
                 removed.push(data);
                 visibleData.delete(key);
             } // else: it was never visible to watcher (due to e.g. query ignoring it) -> so do nothing
+
+            // If we were observing the row, quit doing so
+            const unobserve = rowUnobservers.get(key);
+            if (unobserve) {
+                unobserve();
+            }
         }
 
         // Notify watcher about additions and removals
-        watcher(added, removed, []);
+        if (added.length != 0 || removed.length != 0) {
+            watcher(added, removed, []);
+        }
     }
     const unobserveTable = observeKeys(doc, table, handler);
 
     // Find initial set of keys and pass it to callback
     const [initialRows] = addRows(allKeys(doc, table));
-    watcher(initialRows, [], []);
+    if (initialRows.length != 0) {
+        watcher(initialRows, [], []);
+    }
 
     // Return function that unobserves everything we observe
     return () => {
