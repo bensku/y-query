@@ -2,10 +2,26 @@ import * as Y from 'yjs';
 import type { Table } from './table';
 import { allKeys, getRow, observeKeys, readData, readDataPresent } from './yjs-types';
 
+/**
+ * Gets a row by its key.
+ * 
+ * Note that syncing rows between Yjs peers can take a while!
+ * @param doc Database to operate on.
+ * @param table Table to read from.
+ * @param key Row key.
+ * @returns The row if it is present, or null otherwise.
+ */
 export function getKey<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
     return readData(doc, table, key);
 }
 
+/**
+ * Selects rows that match the given query from a table.
+ * @param doc Database to operate on.
+ * @param table Table to read from.
+ * @param query Query that the rows are evaluated against.
+ * @returns A list of rows that match the given query. Empty list if none do.
+ */
 export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
     const results: T[] = [];
     for (const key of allKeys(doc, table)) {
@@ -22,6 +38,23 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
     return results;
 }
 
+/**
+ * Watches for changes in rows that match the given query.
+ * @param doc Database to operate on.
+ * @param table Table to read from.
+ * @param query Query that the rows are evaluated against.
+ * @param level Watcher change detection level.
+ * 'keys' detects only newly added or removed rows. 'content' detects
+ * changes in row content, excluding nested objects. 'deep' detects changes
+ * in row content, including nested objects (including raw shared types).
+ * Typically, you'll probably want 'content' or possibly 'keys'.
+ * @param watcher Watcher function. When the observed rows change,
+ * this is called with lists of changed rows. Added and changed rows are
+ * provided in their current shapes, while removed rows are in the state
+ * immediately before their removal. Note that changes that cause rows no
+ * longer match the given query are considered removals for watcher!
+ * @returns A function that, when called, unregisters the given watcher.
+ */
 export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: 'keys' | 'content' | 'deep',
         watcher: (added: T[], removed: T[], changed: T[]) => void): () => void {
     const visibleData: Map<string, T> = new Map();
@@ -49,6 +82,7 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: '
             if (data) {
                 // Content changed! Notify watcher
                 watcher([], [], [data]);
+                visibleData.set(key, data); // And make sure watcher gets up-to-date data on removal
             } // else: incompletely synced changes violate schema; wait for sync to complete
         };
         if (deep) {
@@ -148,18 +182,34 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: '
 
 type Filter<T> = (row: Y.Map<unknown>) => boolean;
 
+/**
+ * Accepts any row.
+ */
 export function any<T>() {
     return () => true;
 }
 
+/**
+ * Accepts rows that have the given value.
+ * @param key Key in row.
+ * @param value Expected value.
+ */
 export function eq<T, K extends keyof T & string>(key: K, value: T[K]): Filter<T> {
     return (row) => row.get(key) == value;
 }
 
+/**
+ * Accepts rows that are rejected by the given filter.
+ * @param filter NOT filter.
+ */
 export function not<T>(filter: Filter<T>): Filter<T> {
     return (row) => !filter(row);
 }
 
+/**
+ * Accepts rows that are accepted by all given filters.
+ * @param filters AND filters.
+ */
 export function and<T>(...filters: Filter<T>[]): Filter<T> {
     return (row) => {
         for (const filter of filters) {
@@ -171,6 +221,10 @@ export function and<T>(...filters: Filter<T>[]): Filter<T> {
     }
 }
 
+/**
+ * Accepts rows that are accepted by at least one of the given filters.
+ * @param filters OR filters.
+ */
 export function or<T>(...filters: Filter<T>[]): Filter<T> {
     return (row) => {
         for (const filter of filters) {
@@ -180,12 +234,4 @@ export function or<T>(...filters: Filter<T>[]): Filter<T> {
         }
         return false;
     }
-}
-
-type Operator = 'equal' | 'notEqual';
-
-interface Query<T, K extends keyof T> {
-    key: K;
-    operator: Operator;
-    value: T[K];
 }
