@@ -1,6 +1,6 @@
-import * as Y from 'yjs';
-import type { Table } from "./table";
-import { writeData, type DeepPartial } from "./yjs-types";
+import type * as Y from 'yjs';
+import type { Table } from './table';
+import { writeData, type DeepPartial } from './yjs-types';
 
 /**
  * Inserts new or updates an existing row in a table.
@@ -15,13 +15,17 @@ import { writeData, type DeepPartial } from "./yjs-types";
  * (e.g. UUIDs) to avoid concurrent upserts. If unable, consider using raw
  * Yjs types for data you do not wish to lose due to last-writer-wins.
  */
-export function upsert<T>(doc: Y.Doc, table: Table<T>, row: T & { key: string }) {
+export function upsert<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    row: T & { key: string },
+) {
     writeData(doc, table, row.key, table.type.parse(row), true);
 }
 
 /**
  * Updates a table row.
- * 
+ *
  * If multiple peers update y-query structured data cells simultaneously,
  * last-writer-wins semantics apply. Raw Yjs shared types are not updated
  * using this function; just modify them directly.
@@ -37,7 +41,11 @@ export function upsert<T>(doc: Y.Doc, table: Table<T>, row: T & { key: string })
  * @param update Update to an existing row. Must have key, all other fields
  * are optional.
  */
-export function update<T>(doc: Y.Doc, table: Table<T>, update: DeepPartial<T> & { key: string }): void {
+export function update<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    update: DeepPartial<T> & { key: string },
+): void {
     // Write without upserting; data will be synced, but won't be visible until someone upserts
     writeData(doc, table, update.key, update, false);
 }

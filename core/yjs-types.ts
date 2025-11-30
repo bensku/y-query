@@ -2,27 +2,42 @@ import * as Y from 'yjs';
 import * as z from 'zod';
 import type { Table } from './table';
 
-export function readData<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
+export function readData<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+): T | null {
     const rows = doc.getMap(table.name);
     const present = rows.has(key);
-    return present ? readObject(doc, `${table.name}.${key}`, table.type, key) : null;
+    return present
+        ? readObject(doc, `${table.name}.${key}`, table.type, key)
+        : null;
 }
 
-export function readDataPresent<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
+export function readDataPresent<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+): T | null {
     return readObject(doc, `${table.name}.${key}`, table.type, key);
 }
 
-function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject, userKey?: string): T | null {
+function readObject<T>(
+    doc: Y.Doc,
+    key: string,
+    type: z.ZodType<T> & z.ZodObject,
+    userKey?: string,
+): T | null {
     const row = doc.getMap(key);
     const data: Record<string, unknown> = {};
     for (const [field, t] of Object.entries(type.shape)) {
-        let value;
+        let value: unknown;
 
         // Figure out where the field's value is actually stored
         const syncAs = z.globalRegistry.get(t)?.syncAs;
         if (syncAs) {
             // Separate key in Y.Doc - avoids last-writer-wins for replicated types
-            if (syncAs == Y.Map && t.type == 'object') {
+            if (syncAs === Y.Map && t.type === 'object') {
                 // But we need to convert it to plain JS object
                 // Since it, too, might have nested Yjs objects, we need to do this recursively
                 value = readObject(doc, `${key}.${field}`, t);
@@ -50,21 +65,38 @@ function readObject<T>(doc: Y.Doc, key: string, type: z.ZodType<T> & z.ZodObject
     return parsed.success ? parsed.data : null;
 }
 
-export type DeepPartial<T> = T extends object ? {
-    [P in keyof T]?: DeepPartial<T[P]>;
-} : T;
+export type DeepPartial<T> = T extends object
+    ? {
+          [P in keyof T]?: DeepPartial<T[P]>;
+      }
+    : T;
 
-
-export function writeData<T>(doc: Y.Doc, table: Table<T>, key: string, value: T | DeepPartial<T>, upsert: boolean) {
+export function writeData<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+    value: T | DeepPartial<T>,
+    upsert: boolean,
+) {
     doc.transact(() => {
-        writeObject(doc, `${table.name}.${key}`, value as Record<string, unknown>, table.type);
+        writeObject(
+            doc,
+            `${table.name}.${key}`,
+            value as Record<string, unknown>,
+            table.type,
+        );
         if (upsert) {
             doc.getMap(table.name).set(key, true);
         }
     });
 }
 
-function writeObject(doc: Y.Doc, key: string, data: Record<string, unknown>, type: z.ZodObject) {
+function writeObject(
+    doc: Y.Doc,
+    key: string,
+    data: Record<string, unknown>,
+    type: z.ZodObject,
+) {
     if ('key' in data) {
         delete data.key;
     }
@@ -80,7 +112,7 @@ function writeObject(doc: Y.Doc, key: string, data: Record<string, unknown>, typ
         const syncAs = z.globalRegistry.get(t)?.syncAs;
         if (syncAs) {
             // Separate key in Y.Doc - avoids last-writer-wins for replicated types
-            if (syncAs == Y.Map && t.type == 'object') {
+            if (syncAs === Y.Map && t.type === 'object') {
                 // Merge changes from plain JS to Y.Map
                 writeObject(doc, `${key}.${field}`, data[field] as any, t); // TODO type checks?
             } // else: do not write, it is already a replicated type
@@ -91,26 +123,37 @@ function writeObject(doc: Y.Doc, key: string, data: Record<string, unknown>, typ
     }
 }
 
-export function getRow(doc: Y.Doc, table: Table<unknown>, key: string): Y.Map<unknown> {
+export function getRow(
+    doc: Y.Doc,
+    table: Table<unknown>,
+    key: string,
+): Y.Map<unknown> {
     return doc.getMap(`${table.name}.${key}`);
 }
 
-export function allKeys(doc: Y.Doc, table: Table<unknown>): IterableIterator<string> {
+export function allKeys(
+    doc: Y.Doc,
+    table: Table<unknown>,
+): IterableIterator<string> {
     return doc.getMap(table.name).keys();
 }
 
-export function observeKeys(doc: Y.Doc, table: Table<unknown>, callback: (added: string[], removed: string[]) => void) {
+export function observeKeys(
+    doc: Y.Doc,
+    table: Table<unknown>,
+    callback: (added: string[], removed: string[]) => void,
+) {
     const handler = (event: Y.YMapEvent<unknown>) => {
         const added: string[] = [];
         const removed: string[] = [];
         event.changes.keys.forEach((change, key) => {
-            if (change.action == 'add') {
+            if (change.action === 'add') {
                 added.push(key);
-            } else if (change.action == 'delete') {
+            } else if (change.action === 'delete') {
                 removed.push(key);
             }
-        })
-        if (added.length != 0 || removed.length != 0) {
+        });
+        if (added.length !== 0 || removed.length !== 0) {
             callback(added, removed);
         }
     };

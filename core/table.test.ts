@@ -1,27 +1,35 @@
-import { expect, test } from "bun:test";
-import z from "zod";
+import { expect, test } from 'bun:test';
+import z from 'zod';
 import * as Y from 'yjs';
-import { table, type Row } from "./table";
-import { any, eq, getKey, or, select, watch } from "./view";
-import { remove, update, upsert } from "./update";
+import { table, type Row } from './table';
+import { any, eq, getKey, or, select, watch } from './view';
+import { remove, update, upsert } from './update';
 
-const SimpleTable = table('simple', z.object({
-    key: z.string(),
-    foo: z.boolean(),
-    bar: z.string(),
-}));
-
-const ComplexTable = table('complex', z.object({
-    key: z.string(),
-    rawMap: z.instanceof(Y.Map).meta({ syncAs: Y.Map }),
-    convertedMap: z.object({
-        test: z.string(),
-        another: z.string(),
-    }).meta({ syncAs: Y.Map }),
-    notMapAtAll: z.object({
-        test: z.string(),
+const SimpleTable = table(
+    'simple',
+    z.object({
+        key: z.string(),
+        foo: z.boolean(),
+        bar: z.string(),
     }),
-}));
+);
+
+const ComplexTable = table(
+    'complex',
+    z.object({
+        key: z.string(),
+        rawMap: z.instanceof(Y.Map).meta({ syncAs: Y.Map }),
+        convertedMap: z
+            .object({
+                test: z.string(),
+                another: z.string(),
+            })
+            .meta({ syncAs: Y.Map }),
+        notMapAtAll: z.object({
+            test: z.string(),
+        }),
+    }),
+);
 
 test('Empty table', () => {
     const doc = new Y.Doc();
@@ -37,7 +45,7 @@ test('Simple content', () => {
     const first = {
         key: '123',
         foo: true,
-        bar: 'baz'
+        bar: 'baz',
     };
     upsert(doc, SimpleTable, first);
     expect(select(doc, SimpleTable, any())).toEqual([first]);
@@ -46,7 +54,7 @@ test('Simple content', () => {
     const second = {
         key: '456',
         foo: false,
-        bar: 'test'
+        bar: 'test',
     };
     upsert(doc, SimpleTable, second);
     expect(select(doc, SimpleTable, any())).toHaveLength(2);
@@ -54,7 +62,9 @@ test('Simple content', () => {
     // Test a few queries against the two things
     expect(select(doc, SimpleTable, eq('foo', true))).toEqual([first]);
     expect(select(doc, SimpleTable, eq('foo', false))).toEqual([second]);
-    expect(select(doc, SimpleTable, or(eq('foo', false), eq('bar', 'baz')))).toHaveLength(2);
+    expect(
+        select(doc, SimpleTable, or(eq('foo', false), eq('bar', 'baz'))),
+    ).toHaveLength(2);
 
     // Make sure the other table was not affected
     expect(select(doc, ComplexTable, any())).toBeEmpty();
@@ -70,11 +80,11 @@ test('Complex content', () => {
         rawMap: new Y.Map(),
         convertedMap: {
             test: 'hello',
-            another: 'foo'
+            another: 'foo',
         },
         notMapAtAll: {
-            test: 'world'
-        }
+            test: 'world',
+        },
     };
     upsert(doc, ComplexTable, first);
     const selectedFirst = select(doc, ComplexTable, any())[0];
@@ -94,31 +104,31 @@ test('Simple updates', () => {
     const first = {
         key: '123',
         foo: true,
-        bar: 'one'
+        bar: 'one',
     };
     upsert(doc, SimpleTable, first);
     const second = {
         key: '456',
         foo: false,
-        bar: 'two'
+        bar: 'two',
     };
     upsert(doc, SimpleTable, second);
     upsert(doc, SimpleTable, {
         key: '789',
         foo: true,
-        bar: 'three'
+        bar: 'three',
     });
 
     // No-op update
     update(doc, SimpleTable, {
-        key: '123'
+        key: '123',
     });
     expect(getKey(doc, SimpleTable, '123')).toEqual(first);
 
     // Update to first
     update(doc, SimpleTable, {
         key: '123',
-        bar: 'updated!'
+        bar: 'updated!',
     });
     expect(getKey(doc, SimpleTable, '123')).not.toEqual(first);
     expect(getKey(doc, SimpleTable, '123')?.bar).toBe('updated!');
@@ -132,33 +142,33 @@ test('Nested Y.Map updates', () => {
         rawMap: new Y.Map(),
         convertedMap: {
             test: 'hello',
-            another: 'foo'
+            another: 'foo',
         },
         notMapAtAll: {
-            test: 'world'
-        }
+            test: 'world',
+        },
     });
     upsert(doc, ComplexTable, {
         key: '456',
         rawMap: new Y.Map(),
         convertedMap: {
             test: 'second',
-            another: 'foo'
+            another: 'foo',
         },
         notMapAtAll: {
-            test: 'world'
-        }
+            test: 'world',
+        },
     });
 
     update(doc, ComplexTable, {
         key: '123',
         convertedMap: {
-            test: 'updated'
-        }
+            test: 'updated',
+        },
     });
     expect(getKey(doc, ComplexTable, '123')?.convertedMap).toEqual({
         test: 'updated',
-        another: 'foo'
+        another: 'foo',
     });
 });
 
@@ -168,30 +178,36 @@ test('Key-level watching', () => {
     const addedRows: Row<typeof SimpleTable>[] = [];
     const removedRows: Row<typeof SimpleTable>[] = [];
     const changedRows: Row<typeof SimpleTable>[] = [];
-    watch(doc, SimpleTable, eq('foo', true), 'keys', (added, removed, changed) => {
-        addedRows.push(...added);
-        removedRows.push(...removed);
-        changedRows.push(...changed);
-    });
+    watch(
+        doc,
+        SimpleTable,
+        eq('foo', true),
+        'keys',
+        (added, removed, changed) => {
+            addedRows.push(...added);
+            removedRows.push(...removed);
+            changedRows.push(...changed);
+        },
+    );
 
     // Add stuff that will trigger watcher
     const first = {
         key: '123',
         foo: true,
-        bar: 'one'
+        bar: 'one',
     };
     upsert(doc, SimpleTable, first);
     // And some that won't!
     const second = {
         key: '456',
         foo: false,
-        bar: 'two'
+        bar: 'two',
     };
     upsert(doc, SimpleTable, second);
     const third = {
         key: '789',
         foo: true,
-        bar: 'three'
+        bar: 'three',
     };
     upsert(doc, SimpleTable, third);
 
@@ -224,30 +240,36 @@ test('Shallow content watching', () => {
     const addedRows: Row<typeof SimpleTable>[] = [];
     const removedRows: Row<typeof SimpleTable>[] = [];
     const changedRows: Row<typeof SimpleTable>[] = [];
-    watch(doc, SimpleTable, eq('foo', true), 'content', (added, removed, changed) => {
-        addedRows.push(...added);
-        removedRows.push(...removed);
-        changedRows.push(...changed);
-    });
+    watch(
+        doc,
+        SimpleTable,
+        eq('foo', true),
+        'content',
+        (added, removed, changed) => {
+            addedRows.push(...added);
+            removedRows.push(...removed);
+            changedRows.push(...changed);
+        },
+    );
 
     // Add stuff that will trigger watcher
     const first = {
         key: '123',
         foo: true,
-        bar: 'one'
+        bar: 'one',
     };
     upsert(doc, SimpleTable, first);
     // And some that won't!
     const second = {
         key: '456',
         foo: false,
-        bar: 'two'
+        bar: 'two',
     };
     upsert(doc, SimpleTable, second);
     const third = {
         key: '789',
         foo: true,
-        bar: 'three'
+        bar: 'three',
     };
     upsert(doc, SimpleTable, third);
 
@@ -260,20 +282,22 @@ test('Shallow content watching', () => {
     // Now make some changes!
     update(doc, SimpleTable, {
         key: '123',
-        bar: 'updated'
+        bar: 'updated',
     });
     expect(addedRows).toHaveLength(2);
     expect(removedRows).toHaveLength(0);
-    expect(changedRows).toEqual([{
-        key: '123',
-        foo: true,
-        bar: 'updated'
-    }]);
+    expect(changedRows).toEqual([
+        {
+            key: '123',
+            foo: true,
+            bar: 'updated',
+        },
+    ]);
 
     // Make changes that shouldn't affect anything
     update(doc, SimpleTable, {
         key: '456',
-        bar: 'updated2'
+        bar: 'updated2',
     });
     expect(addedRows).toHaveLength(2);
     expect(removedRows).toHaveLength(0);
@@ -283,7 +307,7 @@ test('Shallow content watching', () => {
     // This should emit removal, NOT change!
     update(doc, SimpleTable, {
         key: '789',
-        foo: false
+        foo: false,
     });
     expect(addedRows).toHaveLength(2);
     expect(removedRows).toEqual([third]);

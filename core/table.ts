@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import * as z from 'zod';
+import type * as z from 'zod';
 
 export interface Table<T> {
     name: string;
@@ -15,9 +15,12 @@ export type Row<T extends Table<unknown>> = z.output<T['type']>;
  * @param type Zod object schema for the table rows.
  * @returns A table definition, consumed by most y-query APIs.
  */
-export function table<T>(name: string, type: z.ZodType<T> & z.ZodObject): Table<T> {
+export function table<T>(
+    name: string,
+    type: z.ZodType<T> & z.ZodObject,
+): Table<T> {
     return {
         name,
-        type
-    }
+        type,
+    };
 }

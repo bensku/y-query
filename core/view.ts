@@ -1,10 +1,16 @@
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import type { Table } from './table';
-import { allKeys, getRow, observeKeys, readData, readDataPresent } from './yjs-types';
+import {
+    allKeys,
+    getRow,
+    observeKeys,
+    readData,
+    readDataPresent,
+} from './yjs-types';
 
 /**
  * Gets a row by its key.
- * 
+ *
  * Note that syncing rows between Yjs peers can take a while!
  * @param doc Database to operate on.
  * @param table Table to read from.
@@ -33,7 +39,7 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
                 results.push(data);
             } // else: row has not been fully replicated to us yet, so skip it
         }
-        }
+    }
 
     return results;
 }
@@ -55,11 +61,16 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
  * longer match the given query are considered removals for watcher!
  * @returns A function that, when called, unregisters the given watcher.
  */
-export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: 'keys' | 'content' | 'deep',
-        watcher: (added: T[], removed: T[], changed: T[]) => void): () => void {
+export function watch<T>(
+    doc: Y.Doc,
+    table: Table<T>,
+    query: Filter<T>,
+    level: 'keys' | 'content' | 'deep',
+    watcher: (added: T[], removed: T[], changed: T[]) => void,
+): () => void {
     const visibleData: Map<string, T> = new Map();
-    
-    const rowUnobservers: Map<string, (() => void)> = new Map();
+
+    const rowUnobservers: Map<string, () => void> = new Map();
     const observeRow = (row: Y.Map<unknown>, key: string, deep: boolean) => {
         const rowWatcher = () => {
             if (!query(row)) {
@@ -73,7 +84,7 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: '
                 const data = visibleData.get(key);
                 if (data) {
                     visibleData.delete(key);
-                    watcher([],  [data], []);
+                    watcher([], [data], []);
                 }
                 return;
             }
@@ -97,10 +108,10 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: '
                 row.unobserve(rowWatcher);
             }
         });
-    }
+    };
 
-    const watchContent = level == 'content' || level == 'deep';
-    const watchDeep = level == 'deep';
+    const watchContent = level === 'content' || level === 'deep';
+    const watchDeep = level === 'deep';
     const addRows = (addedKeys: Iterable<string>): [T[], string[]] => {
         const added: T[] = [];
         const removedKeys: string[] = []; // Removed = changed not to match the query anymore
@@ -161,31 +172,31 @@ export function watch<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>, level: '
         }
 
         // Notify watcher about additions and removals
-        if (added.length != 0 || removed.length != 0) {
+        if (added.length !== 0 || removed.length !== 0) {
             watcher(added, removed, []);
         }
-    }
+    };
     const unobserveTable = observeKeys(doc, table, handler);
 
     // Find initial set of keys and pass it to callback
     const [initialRows] = addRows(allKeys(doc, table));
-    if (initialRows.length != 0) {
+    if (initialRows.length !== 0) {
         watcher(initialRows, [], []);
     }
 
     // Return function that unobserves everything we observe
     return () => {
         unobserveTable();
-        rowUnobservers.forEach(func => func());
-    }
+        rowUnobservers.forEach((func) => void func());
+    };
 }
 
-type Filter<T> = (row: Y.Map<unknown>) => boolean;
+type Filter<_T> = (row: Y.Map<unknown>) => boolean;
 
 /**
  * Accepts any row.
  */
-export function any<T>() {
+export function any<_T>() {
     return () => true;
 }
 
@@ -194,8 +205,11 @@ export function any<T>() {
  * @param key Key in row.
  * @param value Expected value.
  */
-export function eq<T, K extends keyof T & string>(key: K, value: T[K]): Filter<T> {
-    return (row) => row.get(key) == value;
+export function eq<T, K extends keyof T & string>(
+    key: K,
+    value: T[K],
+): Filter<T> {
+    return (row) => row.get(key) === value;
 }
 
 /**
@@ -218,7 +232,7 @@ export function and<T>(...filters: Filter<T>[]): Filter<T> {
             }
         }
         return true;
-    }
+    };
 }
 
 /**
@@ -233,5 +247,5 @@ export function or<T>(...filters: Filter<T>[]): Filter<T> {
             }
         }
         return false;
-    }
+    };
 }
