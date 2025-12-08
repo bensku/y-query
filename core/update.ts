@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import type { Table, TableBase } from './table';
-import { writeData, type DeepPartial } from './yjs-types';
+import { type DeepPartial, writeData } from './yjs-types';
 
 /**
  * Inserts new or updates an existing row in a table.
@@ -57,7 +57,11 @@ export function update<T extends TableBase>(
  * @param table Table to write to.
  * @param key Key in table.
  */
-export function remove<T extends TableBase>(doc: Y.Doc, table: Table<T>, key: string) {
+export function remove<T extends TableBase>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+) {
     // Delete from index only for now (soft delete)
     // Old data will not ordinarily become visible, since upsert must overwrite it all
     // TODO but we need hard delete SOMEHOW

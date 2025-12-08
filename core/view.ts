@@ -17,7 +17,11 @@ import {
  * @param key Row key.
  * @returns The row if it is present, or null otherwise.
  */
-export function getKey<T extends TableBase>(doc: Y.Doc, table: Table<T>, key: string): T | null {
+export function getKey<T extends TableBase>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+): T | null {
     return readData(doc, table, key);
 }
 
@@ -28,7 +32,11 @@ export function getKey<T extends TableBase>(doc: Y.Doc, table: Table<T>, key: st
  * @param query Query that the rows are evaluated against.
  * @returns A list of rows that match the given query. Empty list if none do.
  */
-export function select<T extends TableBase>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
+export function select<T extends TableBase>(
+    doc: Y.Doc,
+    table: Table<T>,
+    query: Filter<T>,
+): T[] {
     const results: T[] = [];
     for (const key of allKeys(doc, table)) {
         const row = getRow(doc, table, key);
@@ -56,7 +64,7 @@ export interface Subscription<T> {
      * Currently visible rows by their keys. This map is mutated by y-query.
      * It is guaranteed to be up-to-date when the associated watching function
      * has been called.
-     * 
+     *
      * Note that the changes are also passed to the watcher function. Unless
      * you're integrating a framework such as React, it is probably a better
      * idea to use those.
@@ -89,7 +97,12 @@ export function watch<T extends TableBase>(
     table: Table<T>,
     query: Filter<T>,
     level: WatchLevel,
-    watcher: (added: T[], removed: T[], changed: T[], visibleData: Map<string, T>) => void,
+    watcher: (
+        added: T[],
+        removed: T[],
+        changed: T[],
+        visibleData: Map<string, T>,
+    ) => void,
 ): () => void {
     const visibleData: Map<string, T> = new Map();
 
@@ -265,7 +278,7 @@ export function watchKey<T extends TableBase>(
                 watcher(row);
             }
             // Also watch for changes in its content
-            if (unobserveRow === null) { 
+            if (unobserveRow === null) {
                 observeRow(getRow(doc, table, key));
             }
         } else if (removed.includes(key)) {
@@ -284,10 +297,10 @@ export function watchKey<T extends TableBase>(
     // Return function that unwatches the key
     return () => {
         unobserveKeys();
-        if (unobserveRow)  {
+        if (unobserveRow) {
             unobserveRow();
         }
-    }
+    };
 }
 
 export type Filter<_T> = (row: Y.Map<unknown>) => boolean;
