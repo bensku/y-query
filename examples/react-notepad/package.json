@@ -1,0 +1,31 @@
+{
+    "name": "@bensku/y-query-demo-react-notepad",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "server": "bun run src/server.ts",
+        "build": "tsc -b && vite build",
+        "lint": "eslint .",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "react": "^19.2.1",
+        "react-dom": "^19.2.1",
+        "@bensku/y-query": "workspace:*",
+        "@bensku/y-query-react": "workspace:*",
+        "@blocknote/core": "^0.28.0",
+        "@blocknote/react": "^0.28.0",
+        "@blocknote/mantine": "^0.28.0",
+        "@hocuspocus/provider": "^2.15.0",
+        "@hocuspocus/server": "^2.15.0",
+        "yjs": "^13.6.27",
+        "zod": "^4.1.13"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^5.1.1",
+        "globals": "^16.5.0",
+        "vite": "^7.2.4"
+    }
+}

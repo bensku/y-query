@@ -1,0 +1,282 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f5f5f5;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.app-header h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.room-badge {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.app-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 280px;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+}
+
+.notes-list {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.notes-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.notes-list-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.create-btn {
+    background: #1976d2;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.create-btn:hover {
+    background: #1565c0;
+}
+
+.notes-items {
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.note-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.note-item:hover {
+    background: #f5f5f5;
+}
+
+.note-item.selected {
+    background: #e3f2fd;
+}
+
+.note-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.note-title {
+    font-weight: 500;
+}
+
+.note-date {
+    font-size: 0.75rem;
+    color: #666;
+}
+
+.delete-btn {
+    background: transparent;
+    border: 1px solid #f44336;
+    color: #f44336;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.note-item:hover .delete-btn {
+    opacity: 1;
+}
+
+.delete-btn:hover {
+    background: #f44336;
+    color: #fff;
+}
+
+.empty-state {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #666;
+}
+
+.editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.no-note-selected {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+}
+
+.note-editor {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.note-title-input {
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 1rem 2rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    outline: none;
+}
+
+.note-title-input:focus {
+    border-bottom-color: #1976d2;
+}
+
+.blocknote-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.blocknote-wrapper > .bn-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.blocknote-wrapper .bn-editor {
+    flex: 1;
+}
+
+.editor-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+}
+
+/* Room Dialog */
+.room-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.room-dialog {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.room-dialog h2 {
+    margin-bottom: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #1976d2;
+}
+
+.room-dialog button[type="submit"] {
+    width: 100%;
+    padding: 0.75rem;
+    background: #1976d2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 0.5rem;
+}
+
+.room-dialog button[type="submit"]:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.room-dialog button[type="submit"]:hover:not(:disabled) {
+    background: #1565c0;
+}
+
+.hint {
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: #666;
+    text-align: center;
+}
