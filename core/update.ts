@@ -1,5 +1,5 @@
 import type * as Y from 'yjs';
-import type { Table } from './table';
+import type { Table, TableBase } from './table';
 import { writeData, type DeepPartial } from './yjs-types';
 
 /**
@@ -15,7 +15,7 @@ import { writeData, type DeepPartial } from './yjs-types';
  * (e.g. UUIDs) to avoid concurrent upserts. If unable, consider using raw
  * Yjs types for data you do not wish to lose due to last-writer-wins.
  */
-export function upsert<T>(
+export function upsert<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     row: T & { key: string },
@@ -41,7 +41,7 @@ export function upsert<T>(
  * @param update Update to an existing row. Must have key, all other fields
  * are optional.
  */
-export function update<T>(
+export function update<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     update: DeepPartial<T> & { key: string },
@@ -57,7 +57,7 @@ export function update<T>(
  * @param table Table to write to.
  * @param key Key in table.
  */
-export function remove(doc: Y.Doc, table: Table<unknown>, key: string) {
+export function remove<T extends TableBase>(doc: Y.Doc, table: Table<T>, key: string) {
     // Delete from index only for now (soft delete)
     // Old data will not ordinarily become visible, since upsert must overwrite it all
     // TODO but we need hard delete SOMEHOW

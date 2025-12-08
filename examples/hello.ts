@@ -1,5 +1,3 @@
-import * as Y from 'yjs';
-import z from 'zod';
 import {
     any,
     eq,
@@ -10,7 +8,9 @@ import {
     update,
     upsert,
     watch,
-} from '../index';
+} from '@bensku/y-query';
+import * as Y from 'yjs';
+import z from 'zod';
 
 // Configure a table
 const MyTable = table(

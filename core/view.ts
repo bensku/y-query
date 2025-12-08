@@ -1,5 +1,5 @@
 import type * as Y from 'yjs';
-import type { Table } from './table';
+import type { Table, TableBase } from './table';
 import {
     allKeys,
     getRow,
@@ -17,7 +17,7 @@ import {
  * @param key Row key.
  * @returns The row if it is present, or null otherwise.
  */
-export function getKey<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
+export function getKey<T extends TableBase>(doc: Y.Doc, table: Table<T>, key: string): T | null {
     return readData(doc, table, key);
 }
 
@@ -28,7 +28,7 @@ export function getKey<T>(doc: Y.Doc, table: Table<T>, key: string): T | null {
  * @param query Query that the rows are evaluated against.
  * @returns A list of rows that match the given query. Empty list if none do.
  */
-export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
+export function select<T extends TableBase>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
     const results: T[] = [];
     for (const key of allKeys(doc, table)) {
         const row = getRow(doc, table, key);
@@ -42,6 +42,26 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
     }
 
     return results;
+}
+
+export type WatchLevel = 'keys' | 'content' | 'deep';
+
+export interface Subscription<T> {
+    /**
+     * Stops watching for events.
+     */
+    unwatch: () => void;
+
+    /**
+     * Currently visible rows by their keys. This map is mutated by y-query.
+     * It is guaranteed to be up-to-date when the associated watching function
+     * has been called.
+     * 
+     * Note that the changes are also passed to the watcher function. Unless
+     * you're integrating a framework such as React, it is probably a better
+     * idea to use those.
+     */
+    visibleData: Map<string, T>;
 }
 
 /**
@@ -59,14 +79,17 @@ export function select<T>(doc: Y.Doc, table: Table<T>, query: Filter<T>): T[] {
  * provided in their current shapes, while removed rows are in the state
  * immediately before their removal. Note that changes that cause rows no
  * longer match the given query are considered removals for watcher!
- * @returns A function that, when called, unregisters the given watcher.
+ * As last argument, all watched rows are probided as a mutable Map.
+ * Unless you're integrating a framework such as React, you will probably
+ * not need this.
+ * @returns Function that, when called, stops this watch operation.
  */
-export function watch<T>(
+export function watch<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     query: Filter<T>,
-    level: 'keys' | 'content' | 'deep',
-    watcher: (added: T[], removed: T[], changed: T[]) => void,
+    level: WatchLevel,
+    watcher: (added: T[], removed: T[], changed: T[], visibleData: Map<string, T>) => void,
 ): () => void {
     const visibleData: Map<string, T> = new Map();
 
@@ -84,7 +107,7 @@ export function watch<T>(
                 const data = visibleData.get(key);
                 if (data) {
                     visibleData.delete(key);
-                    watcher([], [data], []);
+                    watcher([], [data], [], visibleData);
                 }
                 return;
             }
@@ -92,8 +115,8 @@ export function watch<T>(
             const data = readDataPresent(doc, table, key);
             if (data) {
                 // Content changed! Notify watcher
-                watcher([], [], [data]);
-                visibleData.set(key, data); // And make sure watcher gets up-to-date data on removal
+                visibleData.set(key, data); // But make sure visible data is up-to-date before
+                watcher([], [], [data], visibleData);
             } // else: incompletely synced changes violate schema; wait for sync to complete
         };
         if (deep) {
@@ -173,7 +196,7 @@ export function watch<T>(
 
         // Notify watcher about additions and removals
         if (added.length !== 0 || removed.length !== 0) {
-            watcher(added, removed, []);
+            watcher(added, removed, [], visibleData);
         }
     };
     const unobserveTable = observeKeys(doc, table, handler);
@@ -181,17 +204,93 @@ export function watch<T>(
     // Find initial set of keys and pass it to callback
     const [initialRows] = addRows(allKeys(doc, table));
     if (initialRows.length !== 0) {
-        watcher(initialRows, [], []);
+        watcher(initialRows, [], [], visibleData);
     }
 
-    // Return function that unobserves everything we observe
+    // Return subscription that allows e.g. unobserving everything
     return () => {
         unobserveTable();
         rowUnobservers.forEach((func) => void func());
     };
 }
 
-type Filter<_T> = (row: Y.Map<unknown>) => boolean;
+/**
+ * Watches for changes in a single row.
+ * @param doc Database to operate on.
+ * @param table Table to read from.
+ * @param key Row key.
+ * @param level Watch level. If 'keys', the watcher is called when a row with
+ * this key is added or removed. If 'content' or 'deep', the watcher is also
+ * alerted about changes in row content (shallowly or deeply, respectively).
+ * @param watcher Watcher function. This is called with the row's current
+ * value when it changes, which can be null if the row (no longer) exists.
+ * @returns Function that, when called, stops this watch operation.
+ */
+export function watchKey<T extends TableBase>(
+    doc: Y.Doc,
+    table: Table<T>,
+    key: string,
+    level: WatchLevel,
+    watcher: (newValue: T | null) => void,
+): () => void {
+    let unobserveRow: (() => void) | null = null;
+    const observeRow = (row: Y.Map<unknown>) => {
+        const rowWatcher = () => {
+            const data = readDataPresent(doc, table, key);
+            if (data) {
+                // Content changed! Notify watcher
+                watcher(data);
+            } // else: incompletely synced changes violate schema; wait for sync to complete
+        };
+        if (level === 'deep') {
+            row.observeDeep(rowWatcher);
+        } else {
+            row.observe(rowWatcher);
+        }
+        unobserveRow = () => {
+            if (level === 'deep') {
+                row.unobserveDeep(rowWatcher);
+            } else {
+                row.unobserve(rowWatcher);
+            }
+        };
+    };
+
+    // Watch for addition/removal of this key
+    const unobserveKeys = observeKeys(doc, table, (added, removed) => {
+        if (added.includes(key)) {
+            // Row appeared! If it has been fully synced, notify now!
+            const row = readDataPresent(doc, table, key);
+            if (row) {
+                watcher(row);
+            }
+            // Also watch for changes in its content
+            if (unobserveRow === null) { 
+                observeRow(getRow(doc, table, key));
+            }
+        } else if (removed.includes(key)) {
+            // Row disappeared, notify about that
+            watcher(null);
+        }
+    });
+
+    // If desired, observe content changes
+    if (level === 'content' || level === 'deep') {
+        observeRow(getRow(doc, table, key));
+    }
+    // Finally, let the watcher know about row's current value (which may well be null)
+    watcher(readData(doc, table, key));
+
+    // Return function that unwatches the key
+    return () => {
+        unobserveKeys();
+        if (unobserveRow)  {
+            unobserveRow();
+        }
+    }
+}
+
+export type Filter<_T> = (row: Y.Map<unknown>) => boolean;
 
 /**
  * Accepts any row.

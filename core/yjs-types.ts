@@ -1,8 +1,8 @@
 import * as Y from 'yjs';
 import * as z from 'zod';
-import type { Table } from './table';
+import type { Table, TableBase } from './table';
 
-export function readData<T>(
+export function readData<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     key: string,
@@ -14,7 +14,7 @@ export function readData<T>(
         : null;
 }
 
-export function readDataPresent<T>(
+export function readDataPresent<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     key: string,
@@ -71,7 +71,7 @@ export type DeepPartial<T> = T extends object
       }
     : T;
 
-export function writeData<T>(
+export function writeData<T extends TableBase>(
     doc: Y.Doc,
     table: Table<T>,
     key: string,
@@ -123,24 +123,24 @@ function writeObject(
     }
 }
 
-export function getRow(
+export function getRow<T extends TableBase>(
     doc: Y.Doc,
-    table: Table<unknown>,
+    table: Table<T>,
     key: string,
 ): Y.Map<unknown> {
     return doc.getMap(`${table.name}.${key}`);
 }
 
-export function allKeys(
+export function allKeys<T extends TableBase>(
     doc: Y.Doc,
-    table: Table<unknown>,
+    table: Table<T>,
 ): IterableIterator<string> {
     return doc.getMap(table.name).keys();
 }
 
-export function observeKeys(
+export function observeKeys<T extends TableBase>(
     doc: Y.Doc,
-    table: Table<unknown>,
+    table: Table<T>,
     callback: (added: string[], removed: string[]) => void,
 ) {
     const handler = (event: Y.YMapEvent<unknown>) => {

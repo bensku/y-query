@@ -1,12 +1,16 @@
 import * as Y from 'yjs';
 import type * as z from 'zod';
 
-export interface Table<T> {
+export interface TableBase {
+    key: string;
+}
+
+export interface Table<T extends TableBase> {
     name: string;
     type: z.ZodType<T> & z.ZodObject;
 }
 
-export type Row<T extends Table<unknown>> = z.output<T['type']>;
+export type Row<T extends Table<TableBase>> = z.output<T['type']>;
 
 /**
  * Defines a new y-query table.
@@ -15,7 +19,7 @@ export type Row<T extends Table<unknown>> = z.output<T['type']>;
  * @param type Zod object schema for the table rows.
  * @returns A table definition, consumed by most y-query APIs.
  */
-export function table<T>(
+export function table<T extends TableBase>(
     name: string,
     type: z.ZodType<T> & z.ZodObject,
 ): Table<T> {

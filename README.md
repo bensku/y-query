@@ -7,6 +7,7 @@ y-query provides:
   * Full typescript support!
 * Queryable tables!
 * Watcher system for observing changes real-time
+* [React hooks](react) as a separate package
 
 ## Limitations
 > **y-query is alpha-quality software!** In addition to below limitations, it
@@ -152,6 +153,5 @@ See JSDoc and the above quick start. Better documentation will be
 provided later...
 
 ## Future work
-* React hooks
 * Hard(er) row deletions
 * Better documentation
