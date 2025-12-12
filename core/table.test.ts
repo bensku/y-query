@@ -19,12 +19,10 @@ const ComplexTable = table(
     z.object({
         key: z.string(),
         rawMap: z.instanceof(Y.Map).meta({ syncAs: Y.Map }),
-        convertedMap: z
-            .object({
-                test: z.string(),
-                another: z.string(),
-            })
-            .meta({ syncAs: Y.Map }),
+        convertedMap: z.object({
+            test: z.string(),
+            another: z.string(),
+        }),
         notMapAtAll: z.object({
             test: z.string(),
         }),
@@ -329,4 +327,254 @@ test('Shallow content watching', () => {
     expect(addedRows).toHaveLength(2);
     expect(removedRows).toHaveLength(2);
     expect(changedRows).toHaveLength(1);
+});
+
+// Test auto-inferred syncAs: Y.Map for nested objects
+test('Auto-inferred nested Y.Map updates', () => {
+    const doc = new Y.Doc();
+    upsert(doc, ComplexTable, {
+        key: '123',
+        rawMap: new Y.Map(),
+        convertedMap: {
+            test: 'hello',
+            another: 'foo',
+        },
+        notMapAtAll: {
+            test: 'world',
+        },
+    });
+
+    // notMapAtAll now gets auto-inferred syncAs: Y.Map behavior
+    // So partial updates should merge, not replace
+    update(doc, ComplexTable, {
+        key: '123',
+        notMapAtAll: {
+            test: 'updated',
+        },
+    });
+
+    // The field should be updated (previously it would have stayed 'world' with LWW)
+    expect(getKey(doc, ComplexTable, '123')?.notMapAtAll).toEqual({
+        test: 'updated',
+    });
+});
+
+// Test shallow: true opt-out
+const ShallowTable = table(
+    'shallow',
+    z.object({
+        key: z.string(),
+        nestedWithCRDT: z.object({
+            a: z.string(),
+            b: z.string(),
+        }),
+        nestedShallow: z
+            .object({
+                a: z.string(),
+                b: z.string(),
+            })
+            .meta({ shallow: true }),
+    }),
+);
+
+test('Shallow opt-out for nested objects', () => {
+    const doc = new Y.Doc();
+    upsert(doc, ShallowTable, {
+        key: '123',
+        nestedWithCRDT: { a: 'one', b: 'two' },
+        nestedShallow: { a: 'one', b: 'two' },
+    });
+
+    // Update only 'a' in nestedWithCRDT (should merge, keeping 'b')
+    update(doc, ShallowTable, {
+        key: '123',
+        nestedWithCRDT: { a: 'updated' },
+    });
+
+    // nestedWithCRDT should merge (keep 'b')
+    expect(getKey(doc, ShallowTable, '123')?.nestedWithCRDT).toEqual({
+        a: 'updated',
+        b: 'two',
+    });
+
+    // Now update nestedShallow - with shallow: true, the entire object is replaced
+    // We must provide all fields to satisfy schema validation
+    update(doc, ShallowTable, {
+        key: '123',
+        nestedShallow: { a: 'changed', b: 'also changed' },
+    });
+
+    // Verify the shallow object was replaced entirely
+    expect(getKey(doc, ShallowTable, '123')?.nestedShallow).toEqual({
+        a: 'changed',
+        b: 'also changed',
+    });
+
+    // Also verify the underlying storage: shallow uses the row Y.Map directly
+    const row = doc.getMap('shallow.123');
+    expect(row.get('nestedShallow')).toEqual({
+        a: 'changed',
+        b: 'also changed',
+    });
+
+    // While CRDT uses a separate Y.Map
+    const nestedCrdtMap = doc.getMap('shallow.123.nestedWithCRDT');
+    expect(Object.fromEntries(nestedCrdtMap.entries())).toEqual({
+        a: 'updated',
+        b: 'two',
+    });
+});
+
+// Test watching nested Y.Map changes at 'content' level
+test('Content-level watching detects nested Y.Map changes', () => {
+    const doc = new Y.Doc();
+
+    const changedRows: Row<typeof ComplexTable>[] = [];
+    watch(doc, ComplexTable, any(), 'content', (_added, _removed, changed) => {
+        changedRows.push(...changed);
+    });
+
+    upsert(doc, ComplexTable, {
+        key: '123',
+        rawMap: new Y.Map(),
+        convertedMap: {
+            test: 'hello',
+            another: 'foo',
+        },
+        notMapAtAll: {
+            test: 'world',
+        },
+    });
+
+    // Clear the added rows (we're interested in changes)
+    changedRows.length = 0;
+
+    // Update the convertedMap nested field
+    update(doc, ComplexTable, {
+        key: '123',
+        convertedMap: { test: 'updated' },
+    });
+
+    // The watcher should detect the change
+    expect(changedRows).toHaveLength(1);
+    expect(changedRows[0]?.convertedMap.test).toBe('updated');
+
+    changedRows.length = 0;
+
+    // Update the auto-inferred notMapAtAll nested field
+    update(doc, ComplexTable, {
+        key: '123',
+        notMapAtAll: { test: 'also updated' },
+    });
+
+    // The watcher should also detect this change
+    expect(changedRows).toHaveLength(1);
+    expect(changedRows[0]?.notMapAtAll.test).toBe('also updated');
+});
+
+// Test nested z.discriminatedUnion support
+const UnionTable = table(
+    'union',
+    z.object({
+        key: z.string(),
+        variant: z.discriminatedUnion('type', [
+            z.object({ type: z.literal('text'), content: z.string() }),
+            z.object({ type: z.literal('number'), value: z.number() }),
+        ]),
+    }),
+);
+
+test('Nested discriminatedUnion - basic read/write', () => {
+    const doc = new Y.Doc();
+
+    // Insert a text variant
+    upsert(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'hello world' },
+    });
+
+    const result1 = getKey(doc, UnionTable, '123');
+    expect(result1?.variant).toEqual({ type: 'text', content: 'hello world' });
+
+    // Insert a number variant
+    upsert(doc, UnionTable, {
+        key: '456',
+        variant: { type: 'number', value: 42 },
+    });
+
+    const result2 = getKey(doc, UnionTable, '456');
+    expect(result2?.variant).toEqual({ type: 'number', value: 42 });
+
+    // Verify storage - should be in separate Y.Map
+    const variantMap = doc.getMap('union.123.variant');
+    expect(variantMap.get('type')).toBe('text');
+    expect(variantMap.get('content')).toBe('hello world');
+});
+
+test('Nested discriminatedUnion - partial updates merge within variant', () => {
+    const doc = new Y.Doc();
+
+    upsert(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'original' },
+    });
+
+    // Update only the content field (type stays the same)
+    update(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'updated' },
+    });
+
+    const result = getKey(doc, UnionTable, '123');
+    expect(result?.variant).toEqual({ type: 'text', content: 'updated' });
+});
+
+test('Nested discriminatedUnion - switching variants', () => {
+    const doc = new Y.Doc();
+
+    // Start with text variant
+    upsert(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'hello' },
+    });
+
+    expect(getKey(doc, UnionTable, '123')?.variant).toEqual({
+        type: 'text',
+        content: 'hello',
+    });
+
+    // Switch to number variant
+    update(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'number', value: 99 },
+    });
+
+    const result = getKey(doc, UnionTable, '123');
+    expect(result?.variant.type).toBe('number');
+    expect((result?.variant as any).value).toBe(99);
+});
+
+test('Nested discriminatedUnion - watching detects changes', () => {
+    const doc = new Y.Doc();
+
+    const changedRows: Row<typeof UnionTable>[] = [];
+    watch(doc, UnionTable, any(), 'content', (_added, _removed, changed) => {
+        changedRows.push(...changed);
+    });
+
+    upsert(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'initial' },
+    });
+
+    changedRows.length = 0;
+
+    // Update the variant
+    update(doc, UnionTable, {
+        key: '123',
+        variant: { type: 'text', content: 'changed' },
+    });
+
+    expect(changedRows).toHaveLength(1);
+    expect((changedRows[0]?.variant as any).content).toBe('changed');
 });

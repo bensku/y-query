@@ -1,11 +1,14 @@
 import type * as Y from 'yjs';
 import type { Table, TableBase } from './table';
+import * as z from 'zod';
 import {
     allKeys,
     getRow,
+    isRawYjsType,
     observeKeys,
     readData,
     readDataPresent,
+    shouldSyncAsYMap,
 } from './yjs-types';
 
 /**
@@ -107,7 +110,14 @@ export function watch<T extends TableBase>(
     const visibleData: Map<string, T> = new Map();
 
     const rowUnobservers: Map<string, () => void> = new Map();
-    const observeRow = (row: Y.Map<unknown>, key: string, deep: boolean) => {
+    const observeRow = (
+        row: Y.Map<unknown>,
+        key: string,
+        level: WatchLevel,
+    ) => {
+        const deep = level === 'deep';
+        const unobservers: (() => void)[] = [];
+
         const rowWatcher = () => {
             if (!query(row)) {
                 // Row was changed in a way that it no longer falls within our query!
@@ -132,22 +142,58 @@ export function watch<T extends TableBase>(
                 watcher([], [], [data], visibleData);
             } // else: incompletely synced changes violate schema; wait for sync to complete
         };
+
+        // Observe the row Y.Map itself
         if (deep) {
             row.observeDeep(rowWatcher);
+            unobservers.push(() => row.unobserveDeep(rowWatcher));
         } else {
             row.observe(rowWatcher);
+            unobservers.push(() => row.unobserve(rowWatcher));
         }
+
+        // Also observe nested Y.Maps based on schema
+        // For 'content': observe z.object() fields (converted Y.Maps)
+        // For 'deep': also observe raw Yjs types
+        const rowKey = `${table.name}.${key}`;
+        for (const [field, fieldType] of Object.entries(table.type.shape)) {
+            const t = fieldType as z.ZodType;
+            if (shouldSyncAsYMap(t)) {
+                // Nested z.object() stored as separate Y.Map - observe it
+                const nestedMap = doc.getMap(`${rowKey}.${field}`);
+                if (deep) {
+                    nestedMap.observeDeep(rowWatcher);
+                    unobservers.push(() => nestedMap.unobserveDeep(rowWatcher));
+                } else {
+                    nestedMap.observe(rowWatcher);
+                    unobservers.push(() => nestedMap.unobserve(rowWatcher));
+                }
+            } else if (isRawYjsType(t) && level === 'deep') {
+                // Raw Yjs type - only observe at 'deep' level
+                const meta = z.globalRegistry.get(t);
+                const syncAs = meta?.syncAs as
+                    | (new () => Y.AbstractType<unknown>)
+                    | undefined;
+                if (syncAs) {
+                    const rawType = doc.get(`${rowKey}.${field}`, syncAs);
+                    if (rawType) {
+                        rawType.observeDeep(rowWatcher);
+                        unobservers.push(() =>
+                            rawType.unobserveDeep(rowWatcher),
+                        );
+                    }
+                }
+            }
+        }
+
         rowUnobservers.set(key, () => {
-            if (deep) {
-                row.unobserveDeep(rowWatcher);
-            } else {
-                row.unobserve(rowWatcher);
+            for (const unobserve of unobservers) {
+                unobserve();
             }
         });
     };
 
     const watchContent = level === 'content' || level === 'deep';
-    const watchDeep = level === 'deep';
     const addRows = (addedKeys: Iterable<string>): [T[], string[]] => {
         const added: T[] = [];
         const removedKeys: string[] = []; // Removed = changed not to match the query anymore
@@ -166,7 +212,7 @@ export function watch<T extends TableBase>(
 
                 // If requested, watch for changes in the row content
                 if (watchContent) {
-                    observeRow(row, key, watchDeep);
+                    observeRow(row, key, level);
                 }
             } else {
                 // Row is incompletely replicated and currently violates schema
@@ -248,6 +294,9 @@ export function watchKey<T extends TableBase>(
 ): () => void {
     let unobserveRow: (() => void) | null = null;
     const observeRow = (row: Y.Map<unknown>) => {
+        const deep = level === 'deep';
+        const unobservers: (() => void)[] = [];
+
         const rowWatcher = () => {
             const data = readDataPresent(doc, table, key);
             if (data) {
@@ -255,16 +304,51 @@ export function watchKey<T extends TableBase>(
                 watcher(data);
             } // else: incompletely synced changes violate schema; wait for sync to complete
         };
-        if (level === 'deep') {
+
+        // Observe the row Y.Map itself
+        if (deep) {
             row.observeDeep(rowWatcher);
+            unobservers.push(() => row.unobserveDeep(rowWatcher));
         } else {
             row.observe(rowWatcher);
+            unobservers.push(() => row.unobserve(rowWatcher));
         }
+
+        // Also observe nested Y.Maps based on schema
+        const rowKey = `${table.name}.${key}`;
+        for (const [field, fieldType] of Object.entries(table.type.shape)) {
+            const t = fieldType as z.ZodType;
+            if (shouldSyncAsYMap(t)) {
+                // Nested z.object() stored as separate Y.Map - observe it
+                const nestedMap = doc.getMap(`${rowKey}.${field}`);
+                if (deep) {
+                    nestedMap.observeDeep(rowWatcher);
+                    unobservers.push(() => nestedMap.unobserveDeep(rowWatcher));
+                } else {
+                    nestedMap.observe(rowWatcher);
+                    unobservers.push(() => nestedMap.unobserve(rowWatcher));
+                }
+            } else if (isRawYjsType(t) && level === 'deep') {
+                // Raw Yjs type - only observe at 'deep' level
+                const meta = z.globalRegistry.get(t);
+                const syncAs = meta?.syncAs as
+                    | (new () => Y.AbstractType<unknown>)
+                    | undefined;
+                if (syncAs) {
+                    const rawType = doc.get(`${rowKey}.${field}`, syncAs);
+                    if (rawType) {
+                        rawType.observeDeep(rowWatcher);
+                        unobservers.push(() =>
+                            rawType.unobserveDeep(rowWatcher),
+                        );
+                    }
+                }
+            }
+        }
+
         unobserveRow = () => {
-            if (level === 'deep') {
-                row.unobserveDeep(rowWatcher);
-            } else {
-                row.unobserve(rowWatcher);
+            for (const unobserve of unobservers) {
+                unobserve();
             }
         };
     };

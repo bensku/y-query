@@ -34,23 +34,36 @@ function readObject<T>(
         let value: unknown;
 
         // Figure out where the field's value is actually stored
-        const syncAs = z.globalRegistry.get(t)?.syncAs;
-        if (syncAs) {
-            // Separate key in Y.Doc - avoids last-writer-wins for replicated types
-            if (syncAs === Y.Map && t.type === 'object') {
-                // But we need to convert it to plain JS object
-                // Since it, too, might have nested Yjs objects, we need to do this recursively
-                value = readObject(doc, `${key}.${field}`, t);
-                if (value == null) {
-                    // Inner object not yet fully replicated
-                    return null; // Entire row must match schema for us to return it
-                }
-            } else {
-                // And we should present it as Yjs type
-                value = doc.get(`${key}.${field}`, syncAs as any); // TODO type checks
+        const meta = z.globalRegistry.get(t);
+        const syncAs = meta?.syncAs;
+        const shallow = meta?.shallow === true;
+
+        // Auto-infer syncAs: Y.Map for nested z.object() and z.discriminatedUnion() unless shallow: true
+        const isNestedObject = t.type === 'object';
+        const isUnion = t instanceof z.ZodDiscriminatedUnion;
+        const shouldSyncAsMap =
+            (syncAs === Y.Map || (!syncAs && (isNestedObject || isUnion))) &&
+            !shallow;
+
+        if (shouldSyncAsMap && isUnion) {
+            // Discriminated union stored in separate Y.Map
+            value = readUnion(doc, `${key}.${field}`, t);
+            if (value == null) {
+                return null; // Inner union not yet fully replicated
             }
+        } else if (shouldSyncAsMap && isNestedObject) {
+            // Nested object stored in separate Y.Map - convert to plain JS object
+            // Since it, too, might have nested Yjs objects, we need to do this recursively
+            value = readObject(doc, `${key}.${field}`, t);
+            if (value == null) {
+                // Inner object not yet fully replicated
+                return null; // Entire row must match schema for us to return it
+            }
+        } else if (syncAs) {
+            // Raw Yjs type (Y.XmlFragment, Y.Array, etc.) - present as-is
+            value = doc.get(`${key}.${field}`, syncAs as any); // TODO type checks
         } else {
-            // As-is. Strings, booleans, whatever else
+            // As-is. Strings, booleans, whatever else (or shallow nested objects)
             value = row.get(field);
         }
         data[field] = value;
@@ -63,6 +76,39 @@ function readObject<T>(
     // and do not return them
     const parsed = type.safeParse(data);
     return parsed.success ? parsed.data : null;
+}
+
+function readUnion(
+    doc: Y.Doc,
+    key: string,
+    type: z.ZodDiscriminatedUnion,
+): Record<string, unknown> | null {
+    const map = doc.getMap(key);
+
+    const discriminator = type.def.discriminator;
+    const options = type.options as z.ZodObject[];
+
+    const discriminatorValue = map.get(discriminator);
+    if (discriminatorValue === undefined) {
+        return null; // Not yet replicated
+    }
+
+    // Find the matching variant by checking each option's shape
+    // TODO optimize? This is probably inefficient for LARGE numbers of cases
+    const variantSchema = options.find((opt) => {
+        const literalType = opt.shape[discriminator];
+        if (literalType instanceof z.ZodLiteral) {
+            return literalType.value === discriminatorValue;
+        }
+        return false;
+    });
+
+    if (!variantSchema) {
+        return null; // Invalid discriminator value
+    }
+
+    // Read the variant as an object
+    return readObject(doc, key, variantSchema);
 }
 
 export type DeepPartial<T> = T extends object
@@ -109,18 +155,90 @@ function writeObject(
         }
 
         // Figure out where the field's value is actually stored
-        const syncAs = z.globalRegistry.get(t)?.syncAs;
-        if (syncAs) {
-            // Separate key in Y.Doc - avoids last-writer-wins for replicated types
-            if (syncAs === Y.Map && t.type === 'object') {
-                // Merge changes from plain JS to Y.Map
-                writeObject(doc, `${key}.${field}`, data[field] as any, t); // TODO type checks?
-            } // else: do not write, it is already a replicated type
+        const meta = z.globalRegistry.get(t);
+        const syncAs = meta?.syncAs;
+        const shallow = meta?.shallow === true;
+
+        // Auto-infer syncAs: Y.Map for nested z.object() and discriminatedUnion unless shallow: true
+        const isNestedObject = t.type === 'object';
+        const isUnion = t instanceof z.ZodDiscriminatedUnion;
+        const shouldSyncAsMap =
+            (syncAs === Y.Map || (!syncAs && (isNestedObject || isUnion))) &&
+            !shallow;
+
+        if (shouldSyncAsMap && isUnion) {
+            // Discriminated union stored in separate Y.Map
+            writeUnion(
+                doc,
+                `${key}.${field}`,
+                data[field] as Record<string, unknown>,
+                t,
+            );
+        } else if (shouldSyncAsMap && isNestedObject) {
+            // Nested object stored in separate Y.Map - merge changes recursively
+            writeObject(doc, `${key}.${field}`, data[field] as any, t); // TODO type checks?
+        } else if (syncAs) {
+            // Raw Yjs type - do not write, it is already a replicated type
         } else {
             // Write non-synced data as-it-is, with last-writer-wins semantics
             row.set(field, value);
         }
     }
+}
+
+function writeUnion(
+    doc: Y.Doc,
+    key: string,
+    data: Record<string, unknown>,
+    type: z.ZodDiscriminatedUnion,
+) {
+    const discriminator = type.def.discriminator as string;
+    const options = type.options as z.ZodObject[];
+
+    const discriminatorValue = data[discriminator];
+
+    // Find the matching variant by checking each option's shape
+    // TODO optimize? This is probably inefficient for LARGE numbers of cases
+    const variantSchema = options.find((opt) => {
+        const literalType = opt.shape[discriminator];
+        if (literalType instanceof z.ZodLiteral) {
+            return literalType.value === discriminatorValue;
+        }
+        return false;
+    });
+
+    if (variantSchema) {
+        // Write using the variant's object schema
+        writeObject(doc, key, data, variantSchema);
+    }
+}
+
+/**
+ * Determines if a Zod type should be synced as a separate Y.Map.
+ * Returns true for z.object(), z.discriminatedUnion() fields (unless marked shallow),
+ * and explicit syncAs: Y.Map.
+ */
+export function shouldSyncAsYMap(t: z.ZodType): boolean {
+    const meta = z.globalRegistry.get(t);
+    const syncAs = meta?.syncAs;
+    const shallow = meta?.shallow === true;
+    const isNestedObject = t instanceof z.ZodObject;
+    const isUnion = t instanceof z.ZodDiscriminatedUnion;
+    return (
+        ((syncAs === Y.Map && isNestedObject) ||
+            (!syncAs && (isNestedObject || isUnion))) &&
+        !shallow
+    );
+}
+
+/**
+ * Determines if a Zod type is a raw Yjs shared type (not a converted z.object()).
+ */
+export function isRawYjsType(t: z.ZodType): boolean {
+    const meta = z.globalRegistry.get(t);
+    const syncAs = meta?.syncAs;
+    const isNestedObject = t instanceof z.ZodObject;
+    return syncAs != null && !(syncAs === Y.Map && isNestedObject);
 }
 
 export function getRow<T extends TableBase>(
