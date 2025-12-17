@@ -11,8 +11,7 @@ interface NotesListProps {
 }
 
 export function NotesList({ doc, selectedKey, onSelectNote }: NotesListProps) {
-    const filter = useMemo(() => any(), []);
-    const notes = useQuery(doc, NotesTable, filter, 'content');
+    const notes = useQuery(doc, NotesTable, () => any(), [], 'content');
 
     const sortedNotes = useMemo(() => {
         return [...notes].sort((a, b) => b.createdAt - a.createdAt);
