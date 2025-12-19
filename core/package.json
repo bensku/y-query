@@ -1,6 +1,6 @@
 {
     "name": "@bensku/y-query",
-    "version": "0.0.5",
+    "version": "0.0.8",
     "type": "module",
     "scripts": {
         "format": "biome format --write",
@@ -14,10 +14,9 @@
         "@types/bun": "^1.3.3"
     },
     "peerDependencies": {
-        "typescript": "^5.9.2"
+        "typescript": "^5",
+        "yjs": "^13",
+        "zod": "^4"
     },
-    "dependencies": {
-        "yjs": "^13.6.27",
-        "zod": "^4.1.13"
-    }
+    "dependencies": {}
 }
