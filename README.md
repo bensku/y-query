@@ -5,6 +5,7 @@ database? You've come to right place!
 y-query provides:
 * Strongly typed, [Zod](https://zod.dev/)-based data layer on top of Yjs
   * Full typescript support!
+  * Rich support for complex data types, e.g. `discriminatedUnion`
 * Queryable tables!
 * Watcher system for observing changes real-time
 * [React hooks](react) as a separate package

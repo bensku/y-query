@@ -11,12 +11,17 @@ npm install @bensku/y-query-react
 ## Usage
 Watch changes to queried data:
 ```tsx
-const filter = useMemo(() => any<YourRow>(), []);
-const rows = useQuery(doc, YourTable, filter, 'content');
+const rows = useQuery(doc, YourTable, () => any(), [], 'content');
 
 return <ul>
         {rows.map(row => <ul key={row.key}>{row.description}</ul>)}
     </ul>;
+```
+
+For more complex queries, be sure to pass dependencies of your query to `useQuery`.
+It works exactly as it would with e.g. React's `useEffect`:
+```ts
+useQuery(doc, YourTable, () => eq('foo', bar), [bar], 'content');
 ```
 
 Or watch a single row:
